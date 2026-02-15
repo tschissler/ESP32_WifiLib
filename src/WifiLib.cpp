@@ -82,15 +82,25 @@ void WifiLib::connect() {
     if (bssidSet) {
         Serial.printf("Connecting to specific access point with BSSID: %02X:%02X:%02X:%02X:%02X:%02X\n",
             bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5]);
-        WiFi.begin(ssid.c_str(), password.c_str(), 0, bssid, true);
+         while (WiFi.status() != WL_CONNECTED) {
+            WiFi.begin(ssid.c_str(), password.c_str(), 0, bssid, true);
+            delay(1000);
+            if (WiFi.status() == WL_CONNECTED) {
+                break;
+            }
+            Serial.println("Could not connect to Wifi " + ssid + " - password might be incorrect, retrying...");
+        }
     } else {
-        WiFi.begin(ssid.c_str(), password.c_str());
+        while (WiFi.status() != WL_CONNECTED) {
+            WiFi.begin(ssid.c_str(), password.c_str());
+            delay(1000);
+            if (WiFi.status() == WL_CONNECTED) {
+                break;
+            }
+            Serial.println("Could not connect to Wifi " + ssid + " - password might be incorrect, retrying...");
+        }
     }
     
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(1000);
-        Serial.println("Could not connect to Wifi " + ssid + " - password might be incorrect, retrying...");
-    }
     Serial.println("Connected to WiFi");
     Serial.print("IP Address: ");
     Serial.println(WiFi.localIP());
