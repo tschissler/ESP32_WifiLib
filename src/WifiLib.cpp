@@ -267,7 +267,8 @@ void WifiLib::_startAP(const String& apName) {
 }
 
 String WifiLib::_buildSetupPageHtml() const {
-    String html = R"(<!DOCTYPE html>
+    // Hinweis: R"HTML(...)HTML" als Delimiter, da HTML/JS ")"-Sequenzen enthalten kann
+    String html = R"HTML(<!DOCTYPE html>
 <html lang="de">
 <head>
 <meta charset="utf-8">
@@ -292,7 +293,7 @@ String WifiLib::_buildSetupPageHtml() const {
 <form method="post" action="/save">
   <label for="ssid-select">Netzwerk auswaehlen</label>
   <select id="ssid-select" name="ssid" onchange="toggleManual(this)">
-)";
+)HTML";
 
     for (int i = 0; i < _scannedNetworkCount; i++) {
         String netzwerkSsid = WiFi.SSID(i);
