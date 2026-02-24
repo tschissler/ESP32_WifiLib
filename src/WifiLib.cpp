@@ -302,7 +302,7 @@ String WifiLib::_buildSetupPageHtml() const {
                 " (" + String(rssi) + " dBm)</option>\n";
     }
 
-    html += R"(    <option value="__manual__">Anderes Netzwerk...</option>
+    html += R"HTML(    <option value="__manual__">Anderes Netzwerk...</option>
   </select>
   <input type="text" id="manual-ssid" name="ssid_manual" placeholder="SSID manuell eingeben">
   <label for="password">Passwort</label>
@@ -324,7 +324,7 @@ function toggleManual(sel) {
 }
 </script>
 </body>
-</html>)";
+</html>)HTML";
 
     return html;
 }
