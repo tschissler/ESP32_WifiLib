@@ -36,6 +36,10 @@ public:
     // true wenn der AP-Einrichtungsmodus aktiv ist.
     bool isApMode() const;
 
+    // IP-Adresse des Konfigurations-AP (nur gueltig wenn isApMode() == true).
+    // Typischerweise 192.168.4.1 (ESP32-Default), kann aber per softAPConfig() abweichen.
+    String getApIP() const;
+
     // Nicht-blockierender Reconnect-Versuch (ruft WiFi.reconnect() auf).
     // Fuer den Einsatz im Control Loop statt der blockierenden while-Schleife.
     void reconnect();

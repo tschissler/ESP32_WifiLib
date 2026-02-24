@@ -339,6 +339,10 @@ bool WifiLib::isApMode() const {
     return _apModeActive;
 }
 
+String WifiLib::getApIP() const {
+    return _apModeActive ? WiFi.softAPIP().toString() : "";
+}
+
 void WifiLib::reconnect() {
     WiFi.reconnect();
 }
