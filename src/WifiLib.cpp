@@ -166,16 +166,40 @@ bool WifiLib::connectOrStartAP(const String& apName, int timeoutSekunden) {
         Serial.println("WifiLib: Gespeicherte Credentials gefunden, verbinde mit " + ssid);
         // Kein BSSID-Pinning: Mesh-kompatibel, der Treiber waehlt den besten AP
         WiFi.mode(WIFI_STA);
+
+        // Disconnect-Grund fuer Diagnose loggen
+        wifi_event_id_t disconnectEventId = WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
+            uint8_t reason = info.wifi_sta_disconnected.reason;
+            Serial.printf("WifiLib: Verbindung getrennt, Reason %d", reason);
+            switch (reason) {
+                case 15:  Serial.print(" (4-Way-Handshake-Timeout – evtl. WPA3-Inkompatibilitaet)"); break;
+                case 200: Serial.print(" (Beacon-Timeout – AP ausser Reichweite?)");                 break;
+                case 201: Serial.print(" (SSID nicht gefunden)");                                    break;
+                case 202: Serial.print(" (Auth fehlgeschlagen – falsches Passwort?)");               break;
+                case 204: Serial.print(" (Handshake-Timeout – evtl. WPA3-Inkompatibilitaet)");      break;
+            }
+            Serial.println();
+        }, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
+
         WiFi.begin(ssid.c_str(), password.c_str());
 
         unsigned long startMs = millis();
         while (WiFi.status() != WL_CONNECTED) {
             if ((millis() - startMs) >= (unsigned long)(timeoutSekunden * 1000)) {
-                Serial.println("WifiLib: Verbindung zu " + ssid + " nach " + String(timeoutSekunden) + "s Timeout fehlgeschlagen.");
+                int wlStatus = (int)WiFi.status();
+                Serial.print("WifiLib: Verbindung zu " + ssid + " nach " + String(timeoutSekunden) + "s Timeout fehlgeschlagen. WiFi-Status: " + String(wlStatus));
+                switch (wlStatus) {
+                    case 1: Serial.print(" (SSID nicht gefunden)");      break;
+                    case 4: Serial.print(" (Verbindung fehlgeschlagen)"); break;
+                    case 6: Serial.print(" (Getrennt)");                  break;
+                }
+                Serial.println();
                 break;
             }
             delay(500);
         }
+
+        WiFi.removeEvent(disconnectEventId);
 
         if (WiFi.status() == WL_CONNECTED) {
             Serial.println("WifiLib: Verbunden mit " + ssid + " | IP: " + WiFi.localIP().toString());
