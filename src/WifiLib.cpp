@@ -164,10 +164,30 @@ bool WifiLib::connectOrStartAP(const String& apName, int timeoutSekunden) {
 
     if (ssid.length() > 0) {
         Serial.println("WifiLib: Gespeicherte Credentials gefunden, verbinde mit " + ssid);
-        // Kein BSSID-Pinning: Mesh-kompatibel, der Treiber waehlt den besten AP
         WiFi.mode(WIFI_STA);
-        WiFi.disconnect(true);  // clear any leftover connection state from previous boot
+        WiFi.disconnect(false);  // clear any leftover connection state, keep radio on
         delay(100);
+
+        // Scan for the strongest BSSID of the stored SSID (important for mesh networks)
+        uint8_t bestBssid[6] = {0};
+        bool bestBssidFound = false;
+        int bestRssi = -1000;
+        Serial.println("WifiLib: Scanne nach bestem AP fuer " + ssid + "...");
+        int networkCount = WiFi.scanNetworks();
+        for (int i = 0; i < networkCount; i++) {
+            if (WiFi.SSID(i) == ssid && WiFi.RSSI(i) > bestRssi) {
+                bestRssi = WiFi.RSSI(i);
+                memcpy(bestBssid, WiFi.BSSID(i), 6);
+                bestBssidFound = true;
+            }
+        }
+        WiFi.scanDelete();
+        if (bestBssidFound) {
+            Serial.printf("WifiLib: Staerkster AP: %02X:%02X:%02X:%02X:%02X:%02X (%d dBm)\n",
+                bestBssid[0], bestBssid[1], bestBssid[2], bestBssid[3], bestBssid[4], bestBssid[5], bestRssi);
+        } else {
+            Serial.println("WifiLib: Kein passender AP gefunden, versuche ohne BSSID-Pinning.");
+        }
 
         // Disconnect-Grund fuer Diagnose loggen
         wifi_event_id_t disconnectEventId = WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
@@ -183,7 +203,11 @@ bool WifiLib::connectOrStartAP(const String& apName, int timeoutSekunden) {
             Serial.println();
         }, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
 
-        WiFi.begin(ssid.c_str(), password.c_str());
+        if (bestBssidFound) {
+            WiFi.begin(ssid.c_str(), password.c_str(), 0, bestBssid, true);
+        } else {
+            WiFi.begin(ssid.c_str(), password.c_str());
+        }
 
         unsigned long startMs = millis();
         while (WiFi.status() != WL_CONNECTED) {
