@@ -166,6 +166,8 @@ bool WifiLib::connectOrStartAP(const String& apName, int timeoutSekunden) {
         Serial.println("WifiLib: Gespeicherte Credentials gefunden, verbinde mit " + ssid);
         // Kein BSSID-Pinning: Mesh-kompatibel, der Treiber waehlt den besten AP
         WiFi.mode(WIFI_STA);
+        WiFi.disconnect(true);  // clear any leftover connection state from previous boot
+        delay(100);
 
         // Disconnect-Grund fuer Diagnose loggen
         wifi_event_id_t disconnectEventId = WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {

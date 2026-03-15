@@ -1,0 +1,12 @@
+{
+  "changelists": [
+    {
+      "name": "Default",
+      "files": [
+        ".vscode/changelists.json",
+        "src/WifiLib.cpp"
+      ]
+    }
+  ],
+  "active": "Default"
+}
