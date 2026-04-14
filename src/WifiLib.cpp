@@ -21,7 +21,16 @@ void WifiLib::scanAndSelectNetwork() {
     parseWifis(knownWifis);
 
     if (knownWifis.size() == 0) {
-        Serial.println("No known WiFi networks defined, will not connect to Wifi.");
+        if (passwords.length() == 0) {
+            Serial.println("No WIFI_PASSWORDS defined, falling back to NVS/AP mode.");
+            _storedCredMode = true;
+            _loadFromNVS();
+            if (ssid.length() == 0) {
+                _startAP("ESP32-Setup");
+            }
+        } else {
+            Serial.println("No known WiFi networks defined, will not connect to Wifi.");
+        }
         return;
     }
 
@@ -80,6 +89,11 @@ void WifiLib::scanAndSelectNetwork() {
 
 void WifiLib::connect() {
     while (ssid == "" || password == "") {
+        if (_apModeActive) {
+            handle();
+            delay(10);
+            continue;
+        }
         Serial.println("No WiFi network found, retrying...");
         delay(1000);
         scanAndSelectNetwork();
@@ -92,22 +106,31 @@ void WifiLib::connect() {
     if (bssidSet) {
         Serial.printf("Connecting to specific access point with BSSID: %02X:%02X:%02X:%02X:%02X:%02X\n",
             bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5]);
-         while (WiFi.status() != WL_CONNECTED) {
-            WiFi.begin(ssid.c_str(), password.c_str(), 0, bssid, true);
-            delay(1000);
-            if (WiFi.status() == WL_CONNECTED) {
-                break;
-            }
-            Serial.println("Could not connect to Wifi " + ssid + " - password might be incorrect, retrying...");
-        }
+        WiFi.begin(ssid.c_str(), password.c_str(), 0, bssid, true);
     } else {
-        while (WiFi.status() != WL_CONNECTED) {
-            WiFi.begin(ssid.c_str(), password.c_str());
-            delay(1000);
-            if (WiFi.status() == WL_CONNECTED) {
-                break;
+        WiFi.begin(ssid.c_str(), password.c_str());
+    }
+
+    unsigned long startMs = millis();
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        wl_status_t status = WiFi.status();
+        if (status == WL_CONNECT_FAILED || status == WL_NO_SSID_AVAIL) {
+            Serial.println("Could not connect to Wifi " + ssid + " - retrying...");
+            startMs = millis();
+            if (bssidSet) {
+                WiFi.begin(ssid.c_str(), password.c_str(), 0, bssid, true);
+            } else {
+                WiFi.begin(ssid.c_str(), password.c_str());
             }
-            Serial.println("Could not connect to Wifi " + ssid + " - password might be incorrect, retrying...");
+        } else if (millis() - startMs > 15000) {
+            Serial.println("Connection timeout for " + ssid + " - retrying...");
+            startMs = millis();
+            if (bssidSet) {
+                WiFi.begin(ssid.c_str(), password.c_str(), 0, bssid, true);
+            } else {
+                WiFi.begin(ssid.c_str(), password.c_str());
+            }
         }
     }
 
