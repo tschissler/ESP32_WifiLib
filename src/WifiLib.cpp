@@ -217,11 +217,22 @@ bool WifiLib::connectOrStartAP(const String& apName, int timeoutSekunden) {
             uint8_t reason = info.wifi_sta_disconnected.reason;
             Serial.printf("WifiLib: Verbindung getrennt, Reason %d", reason);
             switch (reason) {
-                case 15:  Serial.print(" (4-Way-Handshake-Timeout – evtl. WPA3-Inkompatibilitaet)"); break;
-                case 200: Serial.print(" (Beacon-Timeout – AP ausser Reichweite?)");                 break;
-                case 201: Serial.print(" (SSID nicht gefunden)");                                    break;
-                case 202: Serial.print(" (Auth fehlgeschlagen – falsches Passwort?)");               break;
-                case 204: Serial.print(" (Handshake-Timeout – evtl. WPA3-Inkompatibilitaet)");      break;
+                case 4: Serial.print(" (AP Verbindung abgelaufen, z.B. wegen Inaktivität)"); break;
+                case 8: Serial.print(" (Client baut Verbindung ab)"); break;
+                case 14: Serial.print(" (Authentifizierung fehlgeschlagen - MIC-Fehler, ggf. falsches Passwort)"); break;
+                case 15: Serial.print(" (4-Way-Handshake-Timeout – Frame-Verlust: schwaches Signal/Mesh-Knoten oder andere Probleme beim SAE)"); break;
+                case 34: Serial.print(" (Zu viele Frames unbestätigt wegen schlechter Kanalbedingungen)"); break;
+                case 36: Serial.print(" (Client verlässt die Session)"); break;
+                case 200: Serial.print(" (Beacon-Timeout – AP ausser Reichweite?)"); break;
+                case 201: Serial.print(" (SSID/AP nicht gefunden – evtl. gepinnter BSSID nicht erreichbar)"); break;
+                case 202: Serial.print(" (Auth fehlgeschlagen – Frame-Verlust am Rand der Reichweite moeglich)"); break;
+                case 203: Serial.print(" (Assoziierungs-Phase gescheitert)"); break;
+                case 204: Serial.print(" (Handshake-Timeout – Frame-Verlust: schwaches Signal/Mesh-Knoten oder SAE)"); break;
+                case 205: Serial.print(" (Verbindungsfehler)"); break;
+                case 210: Serial.print(" (Kein AP mit kompatibler Verschlüsselung)"); break;
+                case 211: Serial.print(" (Kein AP erfüllt die Mindest-Verschlüsselungsart / authmode-Schwelle)"); break;
+                case 212: Serial.print(" (Zu schwaches Signal für RSSI-Schwelle)"); break;
+                default: Serial.print(" (unbekannter Grund)"); break;
             }
             Serial.println();
         }, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
