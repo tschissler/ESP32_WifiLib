@@ -68,4 +68,18 @@ private:
     void _saveToNVS(const String& newSsid, const String& newPassword);
     void _startAP(const String& apName);
     String _buildSetupPageHtml() const;
+
+    // AP-Modus-Reconnect (nicht-blockierend): Faellt ein Geraet mit gespeicherten NVS-Credentials
+    // in den AP-Modus (z. B. Router beim Boot kurz weg), versucht es periodisch eine STA-Verbindung,
+    // statt dauerhaft im AP-Modus zu haengen. Greift NUR bei "Stored-Cred-Modus + Credentials
+    // vorhanden"; Erstinstallation (keine Credentials) und der Env-Var-Modus bleiben unveraendert.
+    // Wird aus handle() getickt; der AP laeuft waehrend der Versuche als WIFI_AP_STA weiter (Portal
+    // bleibt erreichbar). Ein gerade genutztes Portal pausiert den Retry.
+    enum class _ApRetryPhase { Inaktiv, Scannt, Verbindet };
+    _ApRetryPhase _apRetryPhase = _ApRetryPhase::Inaktiv;
+    unsigned long _letztesRetryMs = 0;
+    unsigned long _letztePortalAktivitaetMs = 0;
+    unsigned long _retryConnectStartMs = 0;
+    void _apReconnectTick();
+    void _beendeAPModus();
 };

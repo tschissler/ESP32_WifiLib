@@ -314,10 +314,12 @@ void WifiLib::_startAP(const String& apName) {
     _httpServer = new WebServer(80);
 
     _httpServer->on("/", HTTP_GET, [this]() {
+        _letztePortalAktivitaetMs = millis();  // Portal wird benutzt → Retry pausieren
         _httpServer->send(200, "text/html; charset=utf-8", _buildSetupPageHtml());
     });
 
     _httpServer->on("/save", HTTP_POST, [this]() {
+        _letztePortalAktivitaetMs = millis();  // Portal wird benutzt → Retry pausieren
         String newSsid     = _httpServer->arg("ssid");
         String newPassword = _httpServer->arg("password");
 
@@ -342,12 +344,17 @@ void WifiLib::_startAP(const String& apName) {
 
     // Captive-Portal-Redirect fuer alle anderen Pfade
     _httpServer->onNotFound([this]() {
+        _letztePortalAktivitaetMs = millis();  // Portal wird benutzt → Retry pausieren
         _httpServer->sendHeader("Location", "http://" + WiFi.softAPIP().toString() + "/");
         _httpServer->send(302, "text/plain", "");
     });
 
     _httpServer->begin();
     _apModeActive = true;
+    // Erste Retry-Frist laeuft ab AP-Start; Portal-Aktivitaet initial setzen, damit ein
+    // gerade verbundener Bediener nicht sofort vom ersten Retry gestoert wird.
+    _letztesRetryMs = millis();
+    _letztePortalAktivitaetMs = millis();
 }
 
 String WifiLib::_buildSetupPageHtml() const {
@@ -417,6 +424,84 @@ void WifiLib::handle() {
     if (!_apModeActive) return;
     if (_dnsServer)  _dnsServer->processNextRequest();
     if (_httpServer) _httpServer->handleClient();
+    _apReconnectTick();
+}
+
+// Nicht-blockierender STA-Reconnect aus dem AP-Modus heraus (siehe Header). State-Machine ueber
+// mehrere handle()-Aufrufe: Scan (async) → Verbindungsversuch → Erfolg (AP verlassen) / Timeout
+// (im AP bleiben). Greift nur mit gespeicherten NVS-Credentials; ohne Credentials
+// (Erstinstallation) und im Env-Var-Modus passiert nichts.
+void WifiLib::_apReconnectTick() {
+    if (!_apModeActive) return;
+    if (!_storedCredMode) return;     // Env-Var-Modus (Mode 1) bleibt unveraendert
+    if (ssid.length() == 0) return;   // keine gespeicherten Credentials → unbegrenzter AP-Modus
+
+    const unsigned long RETRY_INTERVALL_MS    = 120000;  // alle 2 min ein Versuch
+    const unsigned long PORTAL_AKTIV_MS        = 180000;  // Portal-Nutzung der letzten 3 min pausiert
+    const unsigned long CONNECT_TIMEOUT_MS     = 12000;   // max. 12 s pro Versuch
+
+    unsigned long jetzt = millis();
+
+    switch (_apRetryPhase) {
+    case _ApRetryPhase::Inaktiv:
+        // Wird das Portal gerade benutzt, diesen Zyklus aussetzen (Bediener nicht unterbrechen).
+        if (jetzt - _letztePortalAktivitaetMs < PORTAL_AKTIV_MS) return;
+        if (jetzt - _letztesRetryMs < RETRY_INTERVALL_MS) return;
+        // AP bleibt parallel an (Portal erreichbar), Scan asynchron starten.
+        WiFi.mode(WIFI_AP_STA);
+        WiFi.scanNetworks(true /*async*/, false /*show_hidden*/);
+        _apRetryPhase = _ApRetryPhase::Scannt;
+        Serial.println("WifiLib: AP-Reconnect – starte Scan fuer " + ssid + "...");
+        break;
+
+    case _ApRetryPhase::Scannt: {
+        int n = WiFi.scanComplete();
+        if (n == WIFI_SCAN_RUNNING) return;  // -1: laeuft noch
+        // Scan fertig (oder fehlgeschlagen): staerksten Knoten der gespeicherten SSID waehlen.
+        uint8_t bestBssid[6] = {0};
+        bool bestFound = false;
+        int bestRssi = -1000;
+        for (int i = 0; i < n; i++) {
+            if (WiFi.SSID(i) == ssid && WiFi.RSSI(i) > bestRssi) {
+                uint8_t* b = WiFi.BSSID(i);
+                if (b) { bestRssi = WiFi.RSSI(i); memcpy(bestBssid, b, 6); bestFound = true; }
+            }
+        }
+        WiFi.scanDelete();
+        if (bestFound) {
+            WiFi.begin(ssid.c_str(), password.c_str(), 0, bestBssid, true);
+        } else {
+            WiFi.begin(ssid.c_str(), password.c_str());
+        }
+        _retryConnectStartMs = jetzt;
+        _apRetryPhase = _ApRetryPhase::Verbindet;
+        break;
+    }
+
+    case _ApRetryPhase::Verbindet:
+        if (WiFi.status() == WL_CONNECTED) {
+            Serial.println("WifiLib: AP-Reconnect erfolgreich – verlasse AP-Modus | IP: "
+                           + WiFi.localIP().toString());
+            _beendeAPModus();
+            _apRetryPhase = _ApRetryPhase::Inaktiv;
+            _letztesRetryMs = jetzt;
+        } else if (jetzt - _retryConnectStartMs >= CONNECT_TIMEOUT_MS) {
+            Serial.println("WifiLib: AP-Reconnect fehlgeschlagen, bleibe im AP-Modus.");
+            WiFi.disconnect(false);  // STA-Versuch beenden, AP (WIFI_AP_STA) bleibt erreichbar
+            _apRetryPhase = _ApRetryPhase::Inaktiv;
+            _letztesRetryMs = jetzt;
+        }
+        break;
+    }
+}
+
+// Baut AP/DNS/HTTP ab und wechselt in den reinen STA-Betrieb (nach erfolgreichem Reconnect).
+void WifiLib::_beendeAPModus() {
+    if (_httpServer) { _httpServer->stop(); delete _httpServer; _httpServer = nullptr; }
+    if (_dnsServer)  { _dnsServer->stop();  delete _dnsServer;  _dnsServer = nullptr; }
+    WiFi.softAPdisconnect(true);
+    WiFi.mode(WIFI_STA);
+    _apModeActive = false;
 }
 
 bool WifiLib::isApMode() const {
