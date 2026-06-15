@@ -513,7 +513,38 @@ String WifiLib::getApIP() const {
 }
 
 void WifiLib::reconnect() {
-    WiFi.reconnect();
+    // Robuster Reconnect: WiFi.reconnect() allein versucht erneut die zuletzt (beim initialen
+    // connect) gepinnte BSSID. Ist dieser Knoten weg (Mesh-Roaming, Router-/Hotspot-Neustart mit
+    // neuer BSSID), bleibt der Stack dauerhaft in "sta is connecting" haengen und kommt nie zurueck.
+    // Daher: alten Verbindungszustand sauber beenden, frisch scannen und auf den jetzt staerksten
+    // Knoten der SSID pinnen (gleiche Logik wie connectOrStartAP / _apReconnectTick).
+    if (ssid.length() == 0) {
+        WiFi.reconnect();  // kein SSID-Kontext (z.B. Env-Var-Modus ohne Auswahl) -> Fallback
+        return;
+    }
+
+    WiFi.disconnect(false);  // "connecting"-Zustand aufloesen, Radio an lassen
+
+    uint8_t bestBssid[6] = {0};
+    bool bestFound = false;
+    int bestRssi = -1000;
+    int n = WiFi.scanNetworks();
+    for (int i = 0; i < n; i++) {
+        if (WiFi.SSID(i) == ssid && WiFi.RSSI(i) > bestRssi) {
+            uint8_t* b = WiFi.BSSID(i);
+            if (b) { bestRssi = WiFi.RSSI(i); memcpy(bestBssid, b, 6); bestFound = true; }
+        }
+    }
+    WiFi.scanDelete();
+
+    if (bestFound) {
+        Serial.printf("WifiLib: Reconnect – staerkster AP: %02X:%02X:%02X:%02X:%02X:%02X (%d dBm)\n",
+            bestBssid[0], bestBssid[1], bestBssid[2], bestBssid[3], bestBssid[4], bestBssid[5], bestRssi);
+        WiFi.begin(ssid.c_str(), password.c_str(), 0, bestBssid, true);
+    } else {
+        Serial.println("WifiLib: Reconnect – kein passender AP gefunden, versuche ohne BSSID-Pinning.");
+        WiFi.begin(ssid.c_str(), password.c_str());
+    }
 }
 
 void WifiLib::deleteCredentials() {
