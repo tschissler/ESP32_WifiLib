@@ -69,6 +69,12 @@ private:
     void _startAP(const String& apName);
     String _buildSetupPageHtml() const;
 
+    // Diagnose: loggt die komplette Scan-Liste (alle sichtbaren APs inkl. ALLER Mesh-Knoten/BSSIDs
+    // derselben SSID) mit RSSI/Kanal. Knoten der Ziel-SSID werden mit ">>" markiert, damit die
+    // BSSID-Auswahl am Monitor nachvollziehbar ist. Erwartet ein bereits abgeschlossenes
+    // WiFi.scanNetworks() (n = Anzahl Ergebnisse) und loescht den Scan NICHT.
+    void _logScanResults(int n, const String& zielSsid) const;
+
     // AP-Modus-Reconnect (nicht-blockierend): Faellt ein Geraet mit gespeicherten NVS-Credentials
     // in den AP-Modus (z. B. Router beim Boot kurz weg), versucht es periodisch eine STA-Verbindung,
     // statt dauerhaft im AP-Modus zu haengen. Greift NUR bei "Stored-Cred-Modus + Credentials

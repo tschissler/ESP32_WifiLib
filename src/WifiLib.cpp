@@ -197,6 +197,7 @@ bool WifiLib::connectOrStartAP(const String& apName, int timeoutSekunden) {
         int bestRssi = -1000;
         Serial.println("WifiLib: Scanne nach bestem AP fuer " + ssid + "...");
         int networkCount = WiFi.scanNetworks();
+        _logScanResults(networkCount, ssid);
         for (int i = 0; i < networkCount; i++) {
             if (WiFi.SSID(i) == ssid && WiFi.RSSI(i) > bestRssi) {
                 bestRssi = WiFi.RSSI(i);
@@ -262,7 +263,20 @@ bool WifiLib::connectOrStartAP(const String& apName, int timeoutSekunden) {
         WiFi.removeEvent(disconnectEventId);
 
         if (WiFi.status() == WL_CONNECTED) {
-            Serial.println("WifiLib: Verbunden mit " + ssid + " | IP: " + WiFi.localIP().toString());
+            Serial.printf("WifiLib: Verbunden mit %s | BSSID %s | RSSI %d dBm | ch%d | IP %s\n",
+                ssid.c_str(), WiFi.BSSIDstr().c_str(), WiFi.RSSI(), WiFi.channel(),
+                WiFi.localIP().toString().c_str());
+            // Bestaetigen, dass tatsaechlich die gewaehlte (staerkste) BSSID verbunden wurde.
+            if (bestBssidFound) {
+                uint8_t* istBssid = WiFi.BSSID();
+                if (istBssid != nullptr && memcmp(istBssid, bestBssid, 6) == 0) {
+                    Serial.println("WifiLib: OK - verbunden mit der gewaehlten (staerksten) BSSID.");
+                } else {
+                    Serial.printf("WifiLib: WARNUNG - verbunden mit ANDERER BSSID als gewaehlt "
+                        "(gewaehlt: %02X:%02X:%02X:%02X:%02X:%02X) - BSSID-Pinning nicht honoriert?\n",
+                        bestBssid[0], bestBssid[1], bestBssid[2], bestBssid[3], bestBssid[4], bestBssid[5]);
+                }
+            }
             return true;
         }
         Serial.println("WifiLib: Verbindung fehlgeschlagen, starte AP-Modus...");
@@ -457,6 +471,7 @@ void WifiLib::_apReconnectTick() {
     case _ApRetryPhase::Scannt: {
         int n = WiFi.scanComplete();
         if (n == WIFI_SCAN_RUNNING) return;  // -1: laeuft noch
+        _logScanResults(n, ssid);
         // Scan fertig (oder fehlgeschlagen): staerksten Knoten der gespeicherten SSID waehlen.
         uint8_t bestBssid[6] = {0};
         bool bestFound = false;
@@ -480,8 +495,10 @@ void WifiLib::_apReconnectTick() {
 
     case _ApRetryPhase::Verbindet:
         if (WiFi.status() == WL_CONNECTED) {
-            Serial.println("WifiLib: AP-Reconnect erfolgreich – verlasse AP-Modus | IP: "
-                           + WiFi.localIP().toString());
+            Serial.printf("WifiLib: AP-Reconnect erfolgreich – verlasse AP-Modus | BSSID %s | "
+                          "RSSI %d dBm | ch%d | IP %s\n",
+                          WiFi.BSSIDstr().c_str(), WiFi.RSSI(), WiFi.channel(),
+                          WiFi.localIP().toString().c_str());
             _beendeAPModus();
             _apRetryPhase = _ApRetryPhase::Inaktiv;
             _letztesRetryMs = jetzt;
@@ -529,6 +546,7 @@ void WifiLib::reconnect() {
     bool bestFound = false;
     int bestRssi = -1000;
     int n = WiFi.scanNetworks();
+    _logScanResults(n, ssid);
     for (int i = 0; i < n; i++) {
         if (WiFi.SSID(i) == ssid && WiFi.RSSI(i) > bestRssi) {
             uint8_t* b = WiFi.BSSID(i);
@@ -553,4 +571,18 @@ void WifiLib::deleteCredentials() {
     prefs.clear();
     prefs.end();
     Serial.println("WifiLib: Gespeicherte WiFi-Credentials geloescht. Naechster Start: AP-Modus.");
+}
+
+void WifiLib::_logScanResults(int n, const String& zielSsid) const {
+    if (n <= 0) {
+        Serial.printf("WifiLib: Scan: keine Netzwerke sichtbar (n=%d)\n", n);
+        return;
+    }
+    Serial.printf("WifiLib: Scan: %d Netzwerke sichtbar (>> = Ziel-SSID '%s'):\n", n, zielSsid.c_str());
+    for (int i = 0; i < n; i++) {
+        bool match = (WiFi.SSID(i) == zielSsid);
+        Serial.printf("WifiLib:  %s [%d] '%s'  %s  %d dBm  ch%d\n",
+            match ? ">>" : "  ", i, WiFi.SSID(i).c_str(), WiFi.BSSIDstr(i).c_str(),
+            WiFi.RSSI(i), WiFi.channel(i));
+    }
 }
