@@ -24,9 +24,26 @@ public:
     // Versucht Verbindung mit gespeicherten NVS-Credentials herzustellen.
     // Falls keine Credentials gespeichert oder Verbindung schlaegt fehl:
     // Oeffnet einen Konfigurations-AP (captive portal) zur Ersteinrichtung.
-    // Mesh-kompatibel: verbindet per SSID, kein BSSID-Pinning.
+    // Mesh-robust: scannt die gespeicherte SSID und pinnt den staerksten BSSID.
     // Gibt true zurueck bei erfolgreicher Verbindung, false wenn AP-Modus gestartet wurde.
     bool connectOrStartAP(const String& apName = "ESP32-Setup", int timeoutSekunden = 30);
+
+    // Wie connectOrStartAP, aber OHNE AP-Fallback: nur ein (mesh-robuster) STA-Verbindungsversuch
+    // mit den gespeicherten NVS-Credentials. Gibt true bei Verbindung, false sonst (kein AP-Start).
+    // Fuer Geraete, die bei WLAN-Ausfall NICHT automatisch in den AP-Modus fallen duerfen (z.B. weil
+    // eine andere Datenquelle weiterlaufen muss); der Aufrufer steuert den AP dann per startAP()/stopAP().
+    bool connectOnly(int timeoutSekunden = 30);
+
+    // Startet den Konfigurations-AP (captive portal) auf Anforderung – z.B. ueber einen Taster am Geraet,
+    // wenn der automatische AP-Fallback bewusst unterdrueckt wurde (connectOnly). No-op, wenn AP bereits laeuft.
+    // autoStopBeiInaktivitaetMs > 0: der AP beendet sich in handle() selbst, wenn so lange keine Portal-
+    // Aktivitaet (Seitenaufruf/Speichern) stattfand – Schutz davor, dass ein vergessener AP das Geraet
+    // dauerhaft im AP-Modus haelt. 0 (Default) = kein Auto-Stop, AP bleibt bis stopAP()/Reconnect/Reboot.
+    void startAP(const String& apName = "ESP32-Setup", unsigned long autoStopBeiInaktivitaetMs = 0);
+
+    // Beendet den AP-Modus und wechselt zurueck in den reinen STA-Betrieb (Gegenstueck zu startAP()).
+    // No-op, wenn kein AP aktiv ist.
+    void stopAP();
 
     // Muss regelmaessig aus loop() aufgerufen werden (kein Blocking).
     // Verarbeitet im AP-Modus DNS- und HTTP-Anfragen.
@@ -86,6 +103,7 @@ private:
     unsigned long _letztesRetryMs = 0;
     unsigned long _letztePortalAktivitaetMs = 0;
     unsigned long _retryConnectStartMs = 0;
+    unsigned long _apAutoStopInaktivMs = 0;  // >0: AP nach so langer Portal-Inaktivitaet selbst beenden (startAP)
     void _apReconnectTick();
     void _beendeAPModus();
 };

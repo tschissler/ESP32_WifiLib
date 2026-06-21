@@ -182,7 +182,7 @@ WifiLib::WifiLib()
     memset(bssid, 0, sizeof(bssid));
 }
 
-bool WifiLib::connectOrStartAP(const String& apName, int timeoutSekunden) {
+bool WifiLib::connectOnly(int timeoutSekunden) {
     _loadFromNVS();
 
     if (ssid.length() > 0) {
@@ -279,13 +279,33 @@ bool WifiLib::connectOrStartAP(const String& apName, int timeoutSekunden) {
             }
             return true;
         }
-        Serial.println("WifiLib: Verbindung fehlgeschlagen, starte AP-Modus...");
+        Serial.println("WifiLib: Verbindung fehlgeschlagen.");
     } else {
-        Serial.println("WifiLib: Keine gespeicherten Credentials, starte AP-Modus...");
+        Serial.println("WifiLib: Keine gespeicherten Credentials.");
     }
 
+    return false;
+}
+
+bool WifiLib::connectOrStartAP(const String& apName, int timeoutSekunden) {
+    if (connectOnly(timeoutSekunden)) return true;
+    Serial.println("WifiLib: starte AP-Modus...");
     _startAP(apName);
     return false;
+}
+
+void WifiLib::startAP(const String& apName, unsigned long autoStopBeiInaktivitaetMs) {
+    if (_apModeActive) return;   // bereits aktiv
+    // ssid/password aus NVS laden, damit der AP-Reconnect-Tick (handle()) die gespeicherten
+    // Credentials kennt und den AP von selbst verlassen kann, sobald das WLAN zurueckkehrt.
+    _loadFromNVS();
+    _apAutoStopInaktivMs = autoStopBeiInaktivitaetMs;
+    _startAP(apName);
+}
+
+void WifiLib::stopAP() {
+    if (!_apModeActive) return;
+    _beendeAPModus();
 }
 
 void WifiLib::_loadFromNVS() {
@@ -438,6 +458,13 @@ void WifiLib::handle() {
     if (!_apModeActive) return;
     if (_dnsServer)  _dnsServer->processNextRequest();
     if (_httpServer) _httpServer->handleClient();
+    // Auto-Stop (nur bei startAP mit Timeout): AP nach Portal-Inaktivitaet selbst beenden, damit ein
+    // vergessener AP das Geraet nicht dauerhaft im AP-Modus haelt. Der Aufrufer sieht dann isApMode()==false.
+    if (_apAutoStopInaktivMs > 0 && (millis() - _letztePortalAktivitaetMs) >= _apAutoStopInaktivMs) {
+        Serial.println("WifiLib: AP-Inaktivitaets-Timeout erreicht – beende AP-Modus.");
+        _beendeAPModus();
+        return;
+    }
     _apReconnectTick();
 }
 
@@ -519,6 +546,8 @@ void WifiLib::_beendeAPModus() {
     WiFi.softAPdisconnect(true);
     WiFi.mode(WIFI_STA);
     _apModeActive = false;
+    _apRetryPhase = _ApRetryPhase::Inaktiv;
+    _apAutoStopInaktivMs = 0;  // gilt nur fuer den gerade beendeten (per startAP angeforderten) AP
 }
 
 bool WifiLib::isApMode() const {
